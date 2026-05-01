@@ -6,6 +6,11 @@
 #include "path/path.h"
 #include "extension/extension.h"
 
+/* statx is not available in musl, include from linux headers */
+#ifndef STATX_TYPE
+#include <linux/stat.h>
+#endif
+
 /*
  * This structure is passed to extensions
  * for STATX_SYSCALL event
