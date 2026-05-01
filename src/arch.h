@@ -78,7 +78,6 @@ typedef unsigned char byte_t;
     #define OFFSETOF_STAT_GID_32 28
 
     #define LOADER_ADDRESS 0x600000000000
-    #define HAS_LOADER_32BIT true
 
     #define EXEC_PIC_ADDRESS   0x500000000000
     #define INTERP_PIC_ADDRESS 0x6f0000000000
@@ -140,7 +139,6 @@ typedef unsigned char byte_t;
     #define INTERP_PIC_ADDRESS 0x3f00000000
     #define HAS_POKEDATA_WORKAROUND true
 
-    #define HAS_LOADER_32BIT true
     #define EXEC_PIC_ADDRESS_32   0x0f000000
     #define INTERP_PIC_ADDRESS_32 0x1f000000
 

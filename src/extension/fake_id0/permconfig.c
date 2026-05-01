@@ -300,6 +300,14 @@ int path_matches_pattern(const char *path, const char *pattern)
  *
  *   Format 3 (numeric):     path_pattern  uid:gid  mode_octal
  *     Example: /data  70:70  0700
+ *
+ *   Format 4 (simplified):  path_pattern  user  mode
+ *     Example: /var/lib/postgresql  postgres  0755
+ *     Example: /etc/passwd  root  0644
+ *
+ *   Format 5 (find -printf style): path pattern=uid:gid:mode
+ *     Example: /var/lib/postgresql postgres:postgres:0755
+ *     Example: /data 1000:1000:0700
  */
 static int parse_rule_line(PermRule *rule, const char *line)
 {
@@ -317,18 +325,36 @@ static int parse_rule_line(PermRule *rule, const char *line)
 	/* Try Format 2 (ls -l style) first: "mode_str user group path" */
 	n = sscanf(line, "%15s %255s %255s %4095s", field1, field2, field3, field4);
 	if (n == 4) {
-		/* Check if field1 looks like a mode string */
 		if ((field1[0] == 'd' || field1[0] == '-' || field1[0] == 'l' ||
 		     field1[0] == 'c' || field1[0] == 'b' || field1[0] == 's' ||
 		     field1[0] == 'p') &&
 		    strlen(field1) >= 9) {
-			/* It's ls -l style */
 			strncpy(rule->pattern, field4, PATH_MAX - 1);
 			strncpy(rule->user_str, field2, sizeof(rule->user_str) - 1);
 			strncpy(rule->group_str, field3, sizeof(rule->group_str) - 1);
-			/* Skip the file type character */
 			strncpy(rule->mode_str, field1 + 1, sizeof(rule->mode_str) - 1);
 			return 0;
+		}
+	}
+
+	/* Try Format 5 (find -printf style): "path uid:gid:mode" or "path user:group:mode" */
+	{
+		char *colon1, *colon2;
+		n = sscanf(line, "%4095s %255s", field1, field2);
+		if (n == 2) {
+			colon1 = strchr(field2, ':');
+			if (colon1 != NULL) {
+				colon2 = strchr(colon1 + 1, ':');
+				if (colon2 != NULL) {
+					strncpy(rule->pattern, field1, PATH_MAX - 1);
+					*colon1 = '\0';
+					*colon2 = '\0';
+					strncpy(rule->user_str, field2, sizeof(rule->user_str) - 1);
+					strncpy(rule->group_str, colon1 + 1, sizeof(rule->group_str) - 1);
+					strncpy(rule->mode_str, colon2 + 1, sizeof(rule->mode_str) - 1);
+					return 0;
+				}
+			}
 		}
 	}
 
@@ -339,7 +365,6 @@ static int parse_rule_line(PermRule *rule, const char *line)
 
 		strncpy(rule->pattern, field1, PATH_MAX - 1);
 
-		/* Check if field2 contains user:group */
 		colon = strchr(field2, ':');
 		if (colon != NULL) {
 			*colon = '\0';
@@ -347,15 +372,12 @@ static int parse_rule_line(PermRule *rule, const char *line)
 			strncpy(rule->group_str, colon + 1, sizeof(rule->group_str) - 1);
 		}
 		else {
-			/* Maybe field2 is just user, and field3 is group */
 			strncpy(rule->user_str, field2, sizeof(rule->user_str) - 1);
 			if (n >= 3)
 				strncpy(rule->group_str, field3, sizeof(rule->group_str) - 1);
 		}
 
-		/* Get mode from remaining field */
 		if (n == 3 && colon == NULL) {
-			/* field3 might be mode if it looks like one */
 			if (isdigit((unsigned char)field3[0]) ||
 			    field3[0] == 'r' || field3[0] == 'd') {
 				strncpy(rule->mode_str, field3, sizeof(rule->mode_str) - 1);
@@ -365,6 +387,20 @@ static int parse_rule_line(PermRule *rule, const char *line)
 			strncpy(rule->mode_str, field3, sizeof(rule->mode_str) - 1);
 		}
 
+		return 0;
+	}
+
+	/* Try Format 4 (simplified): "path_pattern user mode" */
+	n = sscanf(line, "%4095s %255s", field1, field2);
+	if (n == 2) {
+		strncpy(rule->pattern, field1, PATH_MAX - 1);
+		if (isdigit((unsigned char)field2[0]) ||
+		    field2[0] == 'r' || field2[0] == 'd') {
+			strncpy(rule->mode_str, field2, sizeof(rule->mode_str) - 1);
+		}
+		else {
+			strncpy(rule->user_str, field2, sizeof(rule->user_str) - 1);
+		}
 		return 0;
 	}
 
@@ -378,11 +414,24 @@ static int parse_rule_line(PermRule *rule, const char *line)
  *   # Comment lines start with #
  *   @rootfs /path/to/rootfs    (optional: sets rootfs for name resolution)
  *   
- *   # Recommended format:
- *   path_pattern  user:group  mode
- *   
- *   # ls -l style (directly from `ls -l` output):
- *   mode_str  user  group  path
+ *   # Format 1 (recommended): path_pattern user:group mode
+ *   /var/lib/postgresql  postgres:postgres  0755
+ *   /tmp/*               1000:1000          rwxrwxrwt
+ *
+ *   # Format 2 (ls -l style - can be generated from ls -lR output):
+ *   drwxr-xr-x  postgres  postgres  /var/lib/postgresql
+ *   -rw-r--r--  root      root      /etc/passwd
+ *
+ *   # Format 3 (numeric): path_pattern uid:gid mode_octal
+ *   /data  70:70  0700
+ *
+ *   # Format 4 (simplified): path_pattern user mode
+ *   /var/lib/postgresql  postgres  0755
+ *   /etc/passwd          root      0644
+ *
+ *   # Format 5 (find -printf style): path user:group:mode
+ *   /var/lib/postgresql postgres:postgres:0755
+ *   /data 1000:1000:0700
  *
  * Mode formats:
  *   - Octal: "0755", "4755" (with setuid), "2755" (with setgid), "1755" (with sticky)
