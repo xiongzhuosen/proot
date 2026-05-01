@@ -38,6 +38,7 @@
 #include <stddef.h>        /* offsetof(3), */
 #include <stdint.h>        /* uint*_t, UINT*_MAX, */
 #include <assert.h>        /* assert(3), */
+#include <stdlib.h>        /* getenv(3), */
 
 #include "syscall/seccomp.h"
 #include "tracee/tracee.h"
@@ -423,6 +424,35 @@ static FilteredSysnum proot_sysnums[] = {
 	FILTERED_SYSNUM_END,
 };
 
+/* Basic syscalls that must be allowed for proot to function on Android/Termux.
+ * These are not traced, just allowed through. */
+static FilteredSysnum allowed_basic_sysnums[] = {
+	{ PR_set_robust_list,	0 },
+	{ PR_get_robust_list,	0 },
+	{ PR_gettid,		0 },
+	{ PR_futex,		0 },
+	{ PR_set_tid_address,	0 },
+	{ PR_exit,		0 },
+	{ PR_exit_group,	0 },
+	{ PR_mmap,		0 },
+	{ PR_mprotect,		0 },
+	{ PR_munmap,		0 },
+	{ PR_mremap,		0 },
+	{ PR_close,		0 },
+	{ PR_read,		0 },
+	{ PR_write,		0 },
+	{ PR_fcntl,		0 },
+	{ PR_fstat,		0 },
+	{ PR_getpid,		0 },
+	{ PR_rt_sigaction,	0 },
+	{ PR_rt_sigprocmask,	0 },
+	{ PR_rt_sigreturn,	0 },
+	{ PR_sched_getaffinity,	0 },
+	{ PR_prctl,		0 },
+	{ PR_getrandom,		0 },
+	FILTERED_SYSNUM_END,
+};
+
 /**
  * Add the @new_sysnums to the list of filtered @sysnums, using the
  * given Talloc @context.  This function returns -errno if an error
@@ -484,9 +514,20 @@ int enable_syscall_filtering(const Tracee *tracee)
 
 	assert(tracee != NULL && tracee->ctx != NULL);
 
+	/* Check if seccomp filtering is disabled via environment variable */
+	if (getenv("PROOT_NO_SECCOMP") != NULL) {
+		note(tracee, INFO, USER, "seccomp filtering disabled (PROOT_NO_SECCOMP set)");
+		return 0;
+	}
+
 	/* Add the sysnums required by PRoot to the list of filtered
 	 * sysnums.  TODO: only if path translation is required.  */
 	status = merge_filtered_sysnums(tracee->ctx, &filtered_sysnums, proot_sysnums);
+	if (status < 0)
+		return status;
+
+	/* Add basic syscalls that must be allowed for proot to function */
+	status = merge_filtered_sysnums(tracee->ctx, &filtered_sysnums, allowed_basic_sysnums);
 	if (status < 0)
 		return status;
 
@@ -505,8 +546,10 @@ int enable_syscall_filtering(const Tracee *tracee)
 	}
 
 	status = set_seccomp_filters(filtered_sysnums);
-	if (status < 0)
-		return status;
+	if (status < 0) {
+		note(tracee, WARNING, SYSTEM, "seccomp filtering failed, falling back to no filtering");
+		return 0;
+	}
 
 	return 0;
 }
