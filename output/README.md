@@ -1,80 +1,140 @@
-# PRoot - 带权限配置支持的构建产物
+# PRoot - User-mode chroot for Termux
 
-## 文件说明
+A patched version of [PRoot](https://github.com/proot-me/PRowt/) with enhanced permission configuration support, optimized for [Termux](https://termux.com).
 
-| 文件 | 说明 |
-|------|------|
-| `proot-x86_64` | x86_64 原生构建版本（用于测试） |
-| `example-permissions.conf` | 权限配置文件示例 |
-| `../proot` | 最终编译好的 aarch64 版本（需要在 Termux 或交叉编译后生成） |
+## Features
 
-## 新增功能：`--perm-config`
+- **Permission Configuration**: Configure file ownership and permissions inside proot using a configuration file
+- **Multiple Config Formats**: Support for ls -l style, numeric, and simplified formats
+- **Username/Groupname Resolution**: Automatically loads /etc/passwd and /etc/group from rootfs
+- **Special Permission Bits**: Full support for setuid, setgid, and sticky bits
+- **Pure Static Binary**: No external dependencies, works directly in Termux
 
-### 问题背景
+## Quick Start
 
-原生 PRoot 使用 `-0`（伪造 root）时，所有属于当前用户的文件都会映射为 root 所有。这导致在更新 PostgreSQL 等需要特定用户所有权的软件时出现问题。
-
-### 解决方案
-
-新增 `--perm-config` 参数，允许指定权限配置文件，为特定路径配置自定义的 UID/GID。
-
-### 使用方法
+### Basic Usage
 
 ```bash
-proot -0 --perm-config /path/to/perms.conf -R /path/to/rootfs /bin/bash
+# Run as fake root with permission config
+./proot -0 --perm-config permissions.conf -R /path/to/rootfs /bin/bash
+
+# Run with specific UID:GID
+./proot -i 1000:1000 --perm-config permissions.conf -R /path/to/rootfs /bin/bash
 ```
 
-### 配置文件格式
+### Permission Configuration
 
+The permission configuration file allows you to specify file ownership and permissions for paths inside proot. This is useful when running services (like PostgreSQL, MySQL, etc.) that require specific file ownership.
+
+#### Configuration Formats
+
+**Format 1 (recommended): path_pattern user:group mode**
 ```
-# 注释行以 # 开头
-# 格式：path_pattern uid gid
-# 路径模式支持通配符：* ? [...]
-# uid/gid 为数字，使用 '-' 保持默认行为
-
-# PostgreSQL 示例
-/var/lib/postgresql      70 70
-/var/lib/postgresql/*    70 70
-
-# MySQL 示例
-/var/lib/mysql           999 999
+/var/lib/postgresql  postgres:postgres  0700
+/tmp/*               1000:1000          rwxrwxrwt
 ```
 
-### 优先级
+**Format 2 (ls -l style): mode_str user group path**
+```
+drwx------  postgres  postgres  /var/lib/postgresql
+-rw-r--r--  root      root      /etc/passwd
+```
 
-1. **Meta 文件**：如果文件在 proot 内通过 chown 修改过，使用 meta 文件中的权限
-2. **权限配置**：如果路径匹配配置文件中的规则，使用配置的 UID/GID
-3. **默认映射**：如果文件属于当前用户，映射为伪造的 root
+**Format 3 (numeric): path_pattern uid:gid mode_octal**
+```
+/data  70:70  0700
+```
 
-## 交叉编译
+**Format 4 (simplified): path_pattern user mode**
+```
+/var/lib/postgresql  postgres  0755
+```
 
-### 在 Termux 中直接编译
+**Format 5 (find -printf style): path user:group:mode**
+```
+/var/lib/postgresql postgres:postgres:0755
+```
+
+#### Mode Formats
+
+- **Octal**: `0755`, `4755` (setuid), `2755` (setgid), `1755` (sticky)
+- **Symbolic**: `rwxr-xr-x`, `rwsr-xr-x` (setuid), `rwxr-sr-x` (setgid), `rwxrwxrwt` (sticky)
+- **Keep original**: Use `-` to keep the original value
+
+#### User/Group
+
+- **Username**: `postgres`, `root`, `www-data`
+- **UID/GID**: `70`, `1000`
+- **Keep original**: Use `-` to keep the original value
+
+### Generate Configuration from Rootfs
+
+Use the provided script to generate a permission configuration from your rootfs:
 
 ```bash
-pkg install make gcc libtalloc-dev
-./build-termux.sh
+./generate-perm-config.sh /path/to/rootfs > my-permissions.conf
 ```
 
-### 使用 Android NDK 交叉编译
+### Example: PostgreSQL Setup
+
+1. Create a permission configuration file:
 
 ```bash
-NDK_PATH=/path/to/android-ndk ./build-aarch64.sh
-```
+cat > pg-perms.conf << 'EOF'
+@rootfs /data/data/com.termux/files/home/rootfs
 
-## 测试
-
-```bash
-# 验证二进制文件
-./proot --help
-
-# 验证 --perm-config 选项
-./proot --help | grep perm-config
-
-# 创建测试配置
-cat > /tmp/test-perms.conf << 'EOF'
-/tmp/testfile 1000 1000
+/var/lib/postgresql  postgres:postgres  0700
+/var/lib/postgresql/*  postgres:postgres  0700
+/var/log/postgresql  postgres:postgres  0755
+/etc/postgresql  postgres:postgres  0755
+/etc/postgresql/*  postgres:postgres  0644
 EOF
-
-# 测试
-./proot -0 --perm-config /tmp/test-perms.conf -R / ls -la /tmp/
 ```
+
+2. Run proot with the configuration:
+
+```bash
+./proot -0 --perm-config pg-perms.conf -R /data/data/com.termux/files/home/rootfs /bin/bash
+```
+
+## Building from Source
+
+### Prerequisites
+
+- Android NDK or cross-compilation toolchain (`gcc-aarch64-linux-gnu`)
+- libtalloc for aarch64
+- gawk (for strtonum support)
+
+### Build
+
+```bash
+# Install dependencies (Debian/Ubuntu)
+sudo apt-get install -y gcc-aarch64-linux-gnu gawk
+
+# Download aarch64 talloc
+cd /tmp
+curl -sL "http://deb.debian.org/debian/pool/main/t/talloc/libtalloc-dev_2.4.0-f2_arm64.deb" -o libtalloc-dev_arm64.deb
+curl -sL "http://deb.debian.org/debian/pool/main/t/talloc/libtalloc2_2.4.0-f2_arm64.deb" -o libtalloc2_arm64.deb
+dpkg-deb -x libtalloc-dev_arm64.deb /tmp/talloc-arm64
+dpkg-deb -x libtalloc2_arm64.deb /tmp/talloc2-arm64
+
+# Build
+cd src
+make clean
+make \
+    CC=aarch64-linux-gnu-gcc \
+    AR=aarch64-linux-gnu-ar \
+    RANLIB=aarch64-linux-gnu-ranlib \
+    STRIP=aarch64-linux-gnu-strip \
+    OBJCOPY=aarch64-linux-gnu-objcopy \
+    OBJDUMP=aarch64-linux-gnu-objdump \
+    CPPFLAGS="-D_FILE_OFFSET_BITS=64 -D_GNU_SOURCE -I. -I. -I/tmp/talloc-arm64/usr/include" \
+    CFLAGS="-Wall -Wextra -O2" \
+    LDFLAGS="-static -L/tmp/talloc-arm64/usr/lib/aarch64-linux-gnu -ltalloc -Wl,-z,noexecstack"
+
+# Binary is now at src/proot
+```
+
+## License
+
+GPL v2 or later. See [COPYING](COPYING) for details.
