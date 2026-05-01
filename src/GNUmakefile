@@ -14,7 +14,7 @@ STRIP    ?= $(CROSS_COMPILE)strip
 OBJCOPY  ?= $(CROSS_COMPILE)objcopy
 OBJDUMP  ?= $(CROSS_COMPILE)objdump
 
-CPPFLAGS += -D_FILE_OFFSET_BITS=64 -D_GNU_SOURCE -I. -I$(VPATH)
+CPPFLAGS += -D_FILE_OFFSET_BITS=64 -D_GNU_SOURCE -I. -I$(VPATH) -I$(SRC)
 CFLAGS   += -Wall -Wextra -O2
 LDFLAGS  += -ltalloc -Wl,-z,noexecstack
 
@@ -74,6 +74,7 @@ OBJECTS += \
 	extension/fake_id0/mk.o \
 	extension/fake_id0/stat.o \
         extension/fake_id0/helper_functions.o \
+	extension/fake_id0/permconfig.o \
 	extension/fake_id0/fake_id0.o \
 	extension/hidden_files/hidden_files.o \
 	extension/mountinfo/mountinfo.o \
@@ -206,7 +207,7 @@ $(eval $(call define_from_arch.h,$1,LOADER_ARCH_CFLAGS))
 $(eval $(call define_from_arch.h,$1,LOADER_ADDRESS))
 
 LOADER_CFLAGS$1  += -fPIC -ffreestanding $(LOADER_ARCH_CFLAGS$1)
-LOADER_LDFLAGS$1 += -static -nostdlib -Wl$(BUILD_ID_NONE),-Ttext=$(LOADER_ADDRESS$1),--rosegment,-z,noexecstack
+LOADER_LDFLAGS$1 += -static -nostdlib -Wl$(BUILD_ID_NONE),-Ttext=$(LOADER_ADDRESS$1),-z,noexecstack
 
 loader/loader$1.o: loader/loader.c
 	@mkdir -p $$(dir $$@)

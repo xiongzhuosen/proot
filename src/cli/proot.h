@@ -67,6 +67,8 @@ static int handle_option_kill_on_exit(Tracee *tracee, const Cli *cli, const char
 static int handle_option_L(Tracee *tracee, const Cli *cli, const char *value);
 static int handle_option_H(Tracee *tracee, const Cli *cli, const char *value);
 static int handle_option_p(Tracee *tracee, const Cli *cli, const char *value);
+static int handle_option_perm_config(Tracee *tracee, const Cli *cli, const char *value);
+extern const char *get_pending_perm_config_path(void);
 
 static int pre_initialize_bindings(Tracee *, const Cli *, size_t, char *const *, size_t);
 static int post_initialize_exe(Tracee *, const Cli *, size_t, char *const *, size_t);
@@ -283,6 +285,30 @@ Copyright (C) 2015 STMicroelectronics, licensed under GPL v2 or later.",
           .handler = handle_option_L,
           .description = "Correct the size returned from lstat for symbolic links.",
           .detail = "",
+        },
+        { .class = "Extension options",
+          .arguments = {
+                { .name = "--perm-config", .separator = ' ', .value = "path" },
+                { .name = NULL, .separator = '\0', .value = NULL } },
+          .handler = handle_option_perm_config,
+          .description = "Load permission configuration from *path* to set specific UID/GID for files.",
+          .detail = "\tThis option allows specifying a configuration file that defines custom\n\
+\tUID/GID ownership for specific paths inside the proot environment.\n\
+\tThis is useful for scenarios like PostgreSQL where database files need\n\
+\tto be owned by a specific user (e.g., postgres) rather than root.\n\
+\t\n\
+\tConfiguration file format:\n\
+\t    # Comment lines start with #\n\
+\t    path_pattern uid gid\n\
+\t\n\
+\tPath patterns support glob wildcards (* ? [...]).\n\
+\tUse '-' for uid or gid to keep default behavior.\n\
+\t\n\
+\tExample:\n\
+\t    /var/lib/postgresql 70 70\n\
+\t    /var/lib/postgresql/* 70 70\n\
+\t\n\
+\tMust be used together with -0 or -i option.",
         },
 	{ .class = "Alias options",
 	  .arguments = {

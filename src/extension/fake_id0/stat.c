@@ -130,6 +130,28 @@ int handle_stat_exit_end(Tracee *tracee, Config *config, word_t sysnum) {
 		}
 	}
 
+	/** Check permission configuration for this path.
+	 *  If a rule matches, apply the configured uid/gid.
+	 */
+	if (config->has_perm_config) {
+		uid_t perm_uid;
+		gid_t perm_gid;
+		int has_uid, has_gid;
+
+		if (match_perm_rule(&config->perm_config, path, &perm_uid, &perm_gid, &has_uid, &has_gid) == 0) {
+			address = peek_reg(tracee, ORIGINAL, sysarg);
+			read_data(tracee, &my_stat, address, sizeof(struct stat));
+
+			if (has_uid == 1)
+				my_stat.st_uid = perm_uid;
+			if (has_gid == 1)
+				my_stat.st_gid = perm_gid;
+
+			write_data(tracee, address, &my_stat, sizeof(struct stat));
+			return 0;
+		}
+	}
+
 	address = peek_reg(tracee, ORIGINAL, sysarg);
 
 	/* Sanity checks.  */

@@ -335,6 +335,20 @@ static int handle_option_p(Tracee *tracee, const Cli *cli UNUSED, const char *va
         return 0;
 }
 
+/* Stores the perm config path for the next fake_id0 initialization */
+static const char *pending_perm_config_path = NULL;
+
+static int handle_option_perm_config(Tracee *tracee, const Cli *cli UNUSED, const char *value)
+{
+	pending_perm_config_path = value;
+	return 0;
+}
+
+const char *get_pending_perm_config_path(void)
+{
+	return pending_perm_config_path;
+}
+
 /**
  * Initialize @tracee->qemu.
  */

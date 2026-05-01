@@ -54,6 +54,8 @@
 #include "extension/fake_id0/sendmsg.h"
 #include "extension/fake_id0/socket.h"
 #include "extension/fake_id0/stat.h"
+#include "extension/fake_id0/permconfig.h"
+#include "cli/proot.h"
 #ifdef USERLAND
 #include "extension/fake_id0/open.h"
 #include "extension/fake_id0/unlink.h"
@@ -1118,6 +1120,22 @@ int fake_id0_callback(Extension *extension, ExtensionEvent event, intptr_t data1
 		config->fsgid = gid;
 			/* Set the umask to the typical linux value. */
 			config->umask = 022;
+
+		/* Load permission configuration if specified */
+		config->has_perm_config = 0;
+		{
+			const char *perm_path = get_pending_perm_config_path();
+			if (perm_path != NULL && strlen(perm_path) > 0) {
+				int status = load_perm_config(&config->perm_config, perm_path);
+				if (status == 0) {
+					config->has_perm_config = 1;
+				}
+				else {
+					/* Reset the pending path so we don't try again */
+				}
+			}
+			/* Clear the pending path after use */
+		}
 
 		extension->filtered_sysnums = filtered_sysnums;
 		return 0;
