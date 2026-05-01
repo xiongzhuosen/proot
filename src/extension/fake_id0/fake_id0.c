@@ -1126,15 +1126,15 @@ int fake_id0_callback(Extension *extension, ExtensionEvent event, intptr_t data1
 		{
 			const char *perm_path = get_pending_perm_config_path();
 			if (perm_path != NULL && strlen(perm_path) > 0) {
+				/* Load user/group name maps first */
+				load_user_group_maps(&config->perm_config);
+				
+				/* Then load permission rules */
 				int status = load_perm_config(&config->perm_config, perm_path);
 				if (status == 0) {
 					config->has_perm_config = 1;
 				}
-				else {
-					/* Reset the pending path so we don't try again */
-				}
 			}
-			/* Clear the pending path after use */
 		}
 
 		extension->filtered_sysnums = filtered_sysnums;
