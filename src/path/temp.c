@@ -40,49 +40,24 @@ const char *get_temp_directory()
 		goto done;
 
 #ifdef __ANDROID__
+	temp_directory = getenv("PREFIX");
+	if (temp_directory != NULL) {
+		char *prefix_tmp = malloc(strlen(temp_directory) + 5);
+		if (prefix_tmp != NULL) {
+			sprintf(prefix_tmp, "%s/tmp", temp_directory);
+			if (ensure_directory_exists(prefix_tmp) == 0) {
+				temp_directory = talloc_strdup(talloc_autofree_context(), prefix_tmp);
+				free(prefix_tmp);
+				if (temp_directory != NULL)
+					goto done;
+			}
+			free(prefix_tmp);
+		}
+	}
+
 	temp_directory = getenv("TMPDIR");
 	if (temp_directory != NULL)
 		goto done;
-
-	{
-		const char *prefix = getenv("PREFIX");
-		if (prefix != NULL) {
-			char *prefix_tmp = malloc(strlen(prefix) + 5);
-			if (prefix_tmp != NULL) {
-				sprintf(prefix_tmp, "%s/tmp", prefix);
-				if (ensure_directory_exists(prefix_tmp) == 0) {
-					temp_directory = prefix_tmp;
-					temp_directory = talloc_strdup(talloc_autofree_context(), prefix_tmp);
-					free(prefix_tmp);
-					if (temp_directory != NULL)
-						goto done;
-					temp_directory = prefix_tmp;
-					goto done;
-				}
-				free(prefix_tmp);
-			}
-		}
-	}
-
-	{
-		const char *home = getenv("HOME");
-		if (home != NULL) {
-			char *home_tmp = malloc(strlen(home) + 5);
-			if (home_tmp != NULL) {
-				sprintf(home_tmp, "%s/tmp", home);
-				if (ensure_directory_exists(home_tmp) == 0) {
-					temp_directory = home_tmp;
-					temp_directory = talloc_strdup(talloc_autofree_context(), home_tmp);
-					free(home_tmp);
-					if (temp_directory != NULL)
-						goto done;
-					temp_directory = home_tmp;
-					goto done;
-				}
-				free(home_tmp);
-			}
-		}
-	}
 #endif
 
 	temp_directory = P_tmpdir;

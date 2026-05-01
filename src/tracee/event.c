@@ -92,10 +92,15 @@ int launch_process(Tracee *tracee, char *const argv[])
 		 * does the same thing. */
 		kill(getpid(), SIGSTOP);
 
-		/* Improve performance by using seccomp mode 2, unless
-		 * this support is explicitly disabled.  */
+		/* Disable seccomp filtering on Android/Termux.
+		 * Android kernel has its own seccomp policy that may
+		 * block essential syscalls like set_robust_list, causing
+		 * SIGSYS crashes. PRoot's seccomp filter cannot override
+		 * the kernel's existing seccomp policy. */
+#if !defined(__ANDROID__)
 		if (getenv("PROOT_NO_SECCOMP") == NULL)
 			(void) enable_syscall_filtering(tracee);
+#endif
 
 		/* Now process is ptraced, so the current rootfs is already the
 		 * guest rootfs.  Note: Valgrind can't handle execve(2) on
