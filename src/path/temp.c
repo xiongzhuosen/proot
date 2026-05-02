@@ -17,9 +17,13 @@
 const char *get_temp_directory()
 {
 	static const char *temp_directory = NULL;
-	char *tmp;
+	const char *cand_proot = getenv("PROOT_TMP_DIR");
+	const char *cand_tmpdir = getenv("TMPDIR");
+	const char *cand_temp = getenv("TEMP");
 	const char *candidates[] = {
-		NULL,  /* filled from PROOT_TMP_DIR */
+		cand_proot,
+		cand_tmpdir,
+		cand_temp,
 		P_tmpdir,
 #ifdef __ANDROID__
 		"/data/local/tmp",
@@ -33,13 +37,14 @@ const char *get_temp_directory()
 	if (temp_directory != NULL)
 		return temp_directory;
 
-	candidates[0] = getenv("PROOT_TMP_DIR");
-
 	for (i = 0; candidates[i] != NULL; i++) {
-		tmp = realpath(candidates[i], NULL);
+		if (candidates[i] == NULL || candidates[i][0] == '\0')
+			continue;
+
+		char *tmp = realpath(candidates[i], NULL);
 		if (tmp != NULL) {
 			struct stat st;
-			if (stat(tmp, &st) == 0 && S_ISDIR(st.st_mode)) {
+			if (stat(tmp, &st) == 0 && S_ISDIR(st.st_mode) && access(tmp, W_OK | X_OK) == 0) {
 				temp_directory = talloc_strdup(talloc_autofree_context(), tmp);
 				if (temp_directory == NULL)
 					temp_directory = tmp;
@@ -51,8 +56,15 @@ const char *get_temp_directory()
 		}
 	}
 
-	/* Last resort: use first candidate even if it doesn't exist */
-	temp_directory = candidates[0] ? candidates[0] : P_tmpdir;
+	/* Last resort: use first valid candidate even if it doesn't exist yet */
+	for (i = 0; candidates[i] != NULL; i++) {
+		if (candidates[i][0] != '\0') {
+			temp_directory = candidates[i];
+			return temp_directory;
+		}
+	}
+
+	temp_directory = P_tmpdir;
 	return temp_directory;
 }
 
