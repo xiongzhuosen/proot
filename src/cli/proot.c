@@ -29,6 +29,7 @@
 #include "cli/note.h"
 #include "extension/extension.h"
 #include "extension/sysvipc/sysvipc.h"
+#include "extension/fake_id0/config.h"
 #include "path/binding.h"
 #include "attribute.h"
 
@@ -333,6 +334,34 @@ static int handle_option_p(Tracee *tracee, const Cli *cli UNUSED, const char *va
 {
         (void) initialize_extension(tracee, port_switch_callback, NULL);
         return 0;
+}
+
+static int handle_option_perm_config(Tracee *tracee, const Cli *cli UNUSED, const char *value)
+{
+	void *extension;
+
+	extension = get_extension(tracee, fake_id0_callback);
+	if (extension == NULL) {
+		/* fake_id0 not enabled yet, enable it with default uid:gid */
+		(void) initialize_extension(tracee, fake_id0_callback, "0:0");
+		extension = get_extension(tracee, fake_id0_callback);
+		if (extension == NULL)
+			return -1;
+	}
+
+	/* Store the perm_config path in the extension's config */
+	Extension *ext = (Extension *)extension;
+	Config *config = talloc_get_type_abort(ext->config, Config);
+
+	int status = load_perm_config(&config->perm_config, value);
+	if (status < 0) {
+		note(tracee, ERROR, USER, "failed to load perm config: %s", value);
+		return -1;
+	}
+	config->has_perm_config = true;
+
+	note(tracee, INFO, USER, "perm config loaded: %s (%d rules)", value, status);
+	return 0;
 }
 
 /**

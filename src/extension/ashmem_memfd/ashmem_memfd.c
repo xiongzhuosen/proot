@@ -1,8 +1,17 @@
 #include <stdlib.h>
 #include <signal.h>
 #include <unistd.h>
+#include <string.h>
 #include <sys/syscall.h>  /* __NR_memfd_create,  */
+#ifdef __ANDROID__
 #include <linux/ashmem.h> /* ASHMEM_GET_SIZE,  */
+#else
+/* Stub definitions for non-Android builds */
+#define ASHMEM_GET_SIZE 0
+#define ASHMEM_SET_SIZE 0
+#define ASHMEM_SET_NAME 0
+#define ASHMEM_NAME_LEN 256
+#endif
 #include <linux/memfd.h>  /* MFD_CLOEXEC  */
 
 #include <talloc.h>

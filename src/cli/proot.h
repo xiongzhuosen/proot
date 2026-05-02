@@ -67,6 +67,7 @@ static int handle_option_kill_on_exit(Tracee *tracee, const Cli *cli, const char
 static int handle_option_L(Tracee *tracee, const Cli *cli, const char *value);
 static int handle_option_H(Tracee *tracee, const Cli *cli, const char *value);
 static int handle_option_p(Tracee *tracee, const Cli *cli, const char *value);
+static int handle_option_perm_config(Tracee *tracee, const Cli *cli, const char *value);
 
 static int pre_initialize_bindings(Tracee *, const Cli *, size_t, char *const *, size_t);
 static int post_initialize_exe(Tracee *, const Cli *, size_t, char *const *, size_t);
@@ -283,6 +284,26 @@ Copyright (C) 2015 STMicroelectronics, licensed under GPL v2 or later.",
           .handler = handle_option_L,
           .description = "Correct the size returned from lstat for symbolic links.",
           .detail = "",
+        },
+        { .class = "Extension options",
+          .arguments = {
+                { .name = "--perm-config", .separator = ' ', .value = "path" },
+                { .name = NULL, .separator = '\0', .value = NULL } },
+          .handler = handle_option_perm_config,
+          .description = "Load permission config file to override path ownership.",
+          .detail = "\tLoad a permission configuration file that specifies custom\n\
+\tuid/gid/mode for specific paths. This allows files inside proot\n\
+\tto retain their real host ownership instead of being mapped to\n\
+\tthe fake uid. Useful for PostgreSQL and other services that\n\
+\trefuse to run with root-owned data directories.\n\
+\t\n\
+\tConfig file format (one rule per line):\n\
+\t  path=/var/lib/postgresql uid=999 gid=999 mode=0700\n\
+\t  /var/lib/postgresql/** uid=999 gid=999\n\
+\t  /etc/shadow mode=0640\n\
+\t\n\
+\tLines starting with # are comments. The /** suffix matches\n\
+\tall files under a directory recursively.",
         },
 	{ .class = "Alias options",
 	  .arguments = {

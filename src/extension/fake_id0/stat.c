@@ -9,6 +9,7 @@
 #include "syscall/seccomp.h"
 #include "extension/fake_id0/stat.h"
 #include "extension/fake_id0/helper_functions.h"
+#include "extension/fake_id0/perm_config.h"
 #include "tracee/statx.h"
 
 #ifndef USERLAND
@@ -37,6 +38,10 @@ int handle_stat_exit_end(Tracee *tracee, Config *config, Reg stat_sysarg) {
 	gid = peek_uint32(tracee, address + offsetof_stat_gid(tracee));
 	if (errno != 0)
 		gid = 0; /* Not fatal.  */
+
+	/* If perm_config has a rule for this path, skip default uid mapping.
+	 * The perm_config rule takes precedence to allow real ownership. */
+	/* Note: path not available in non-USERLAND stat handler */
 
 	/* Override only if the file is owned by the current user.
 	 * Errors are not fatal here.  */
@@ -83,6 +88,8 @@ int handle_stat_exit_end(Tracee *tracee, Config *config, word_t sysnum) {
 	char path[PATH_MAX];
 	char meta_path[PATH_MAX];
 	word_t result;
+	PermRule perm_rule;
+	bool perm_match = false;
 
 	/* Override only if it succeed.  */
 	result = peek_reg(tracee, CURRENT, SYSARG_RESULT);
@@ -101,6 +108,14 @@ int handle_stat_exit_end(Tracee *tracee, Config *config, word_t sysnum) {
 		return status;
 	if(status == 1) 
 		return 0;
+
+	/** Check perm_config rules for this path before any uid mapping.
+	 *  If a rule matches, we skip the default uid->fake_uid mapping
+	 *  so the real host ownership is preserved. */
+	if (config->has_perm_config &&
+	    find_perm_rule(&config->perm_config, path, &perm_rule)) {
+		perm_match = true;
+	}
 
 	/* Get the address of the 'stat' structure.  */
 	if (sysnum == PR_fstatat64 || sysnum == PR_newfstatat)
@@ -125,6 +140,18 @@ int handle_stat_exit_end(Tracee *tracee, Config *config, word_t sysnum) {
 			my_stat.st_mode = (mode | ((my_stat.st_mode & S_IFMT) | (my_stat.st_mode & 07000)));
 			my_stat.st_uid = uid;
 			my_stat.st_gid = gid;
+
+			/* If perm_config matched, override with configured uid/gid/mode */
+			if (perm_match) {
+				if (perm_rule.has_uid)
+					my_stat.st_uid = perm_rule.uid;
+				if (perm_rule.has_gid)
+					my_stat.st_gid = perm_rule.gid;
+				if (perm_rule.has_mode) {
+					my_stat.st_mode = (mode | ((my_stat.st_mode & S_IFMT) | (my_stat.st_mode & 07000) | perm_rule.mode));
+				}
+			}
+
 			write_data(tracee, peek_reg(tracee, ORIGINAL, sysarg), &my_stat, sizeof(struct stat));
 			return 0;
 		}
@@ -145,6 +172,18 @@ int handle_stat_exit_end(Tracee *tracee, Config *config, word_t sysnum) {
 	if (errno != 0) 
 		gid = 0; /* Not fatal.  */
 	
+	/* If perm_config rule matches, skip default uid mapping.
+	 * Keep the real host ownership so the file appears with its
+	 * actual owner inside proot. */
+	if (perm_match) {
+		/* Override with perm_config values if specified */
+		if (perm_rule.has_uid)
+			poke_uint32(tracee, address + offsetof_stat_uid(tracee), perm_rule.uid);
+		if (perm_rule.has_gid)
+			poke_uint32(tracee, address + offsetof_stat_gid(tracee), perm_rule.gid);
+		return 0;
+	}
+
 	/* Override only if the file is owned by the current user.
 	 * Errors are not fatal here.  */
 	if (uid == getuid()) 
@@ -161,15 +200,23 @@ int fake_id0_handle_statx_syscall(Tracee *tracee, Config *config, uintptr_t stat
 	(void) tracee;
 	// TODO: USERLAND
 	struct statx_syscall_state *state = (struct statx_syscall_state *) statx_state_raw;
+
+	/* Check perm_config rules - if matched, skip default uid mapping */
+	/* Note: path not easily available in statx callback, so we check
+	 * only if a rule exists and skip default mapping */
+	bool skip_default = config->has_perm_config;
+
 	if (state->statx_buf.stx_mask & STATX_UID) {
 		if (state->statx_buf.stx_uid == getuid()) {
-			state->statx_buf.stx_uid = config->suid;
+			if (!skip_default)
+				state->statx_buf.stx_uid = config->suid;
 			state->updated_stats = true;
 		}
 	}
 	if (state->statx_buf.stx_mask & STATX_GID) {
 		if (state->statx_buf.stx_gid == getuid()) {
-			state->statx_buf.stx_gid = config->sgid;
+			if (!skip_default)
+				state->statx_buf.stx_gid = config->sgid;
 			state->updated_stats = true;
 		}
 	}

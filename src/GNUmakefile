@@ -74,6 +74,7 @@ OBJECTS += \
 	extension/fake_id0/mk.o \
 	extension/fake_id0/stat.o \
         extension/fake_id0/helper_functions.o \
+	extension/fake_id0/perm_config.o \
 	extension/fake_id0/fake_id0.o \
 	extension/hidden_files/hidden_files.o \
 	extension/mountinfo/mountinfo.o \
@@ -89,7 +90,10 @@ define define_from_arch.h
 $2$1 := $(shell $(CC) $1 -E -dM -DNO_LIBC_HEADER $(SRC)/arch.h | grep -w $2 | cut -f 3 -d ' ')
 endef
 
+# Allow overriding HAS_LOADER_32BIT from environment (useful for cross-compilation)
+ifeq ($(origin HAS_LOADER_32BIT),undefined)
 $(eval $(call define_from_arch.h,,HAS_LOADER_32BIT))
+endif
 $(eval $(call define_from_arch.h,,HAS_POKEDATA_WORKAROUND))
 
 ifdef PROOT_UNBUNDLE_LOADER
@@ -206,7 +210,7 @@ $(eval $(call define_from_arch.h,$1,LOADER_ARCH_CFLAGS))
 $(eval $(call define_from_arch.h,$1,LOADER_ADDRESS))
 
 LOADER_CFLAGS$1  += -fPIC -ffreestanding $(LOADER_ARCH_CFLAGS$1)
-LOADER_LDFLAGS$1 += -static -nostdlib -Wl$(BUILD_ID_NONE),-Ttext=$(LOADER_ADDRESS$1),--rosegment,-z,noexecstack
+LOADER_LDFLAGS$1 += -static -nostdlib -Wl$(BUILD_ID_NONE),-Ttext=$(LOADER_ADDRESS$1),-z,noexecstack
 
 loader/loader$1.o: loader/loader.c
 	@mkdir -p $$(dir $$@)
