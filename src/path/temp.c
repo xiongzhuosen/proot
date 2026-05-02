@@ -17,51 +17,34 @@
 const char *get_temp_directory()
 {
 	static const char *temp_directory = NULL;
-	const char *cand_proot = getenv("PROOT_TMP_DIR");
-	const char *cand_tmpdir = getenv("TMPDIR");
-	const char *cand_temp = getenv("TEMP");
-	const char *candidates[] = {
-		cand_proot,
-		cand_tmpdir,
-		cand_temp,
-		P_tmpdir,
-#ifdef __ANDROID__
-		"/data/local/tmp",
-#endif
-		"/tmp",
-		"/var/tmp",
-		NULL
-	};
-	int i;
+	const char *cand;
 
 	if (temp_directory != NULL)
 		return temp_directory;
 
-	for (i = 0; candidates[i] != NULL; i++) {
-		if (candidates[i] == NULL || candidates[i][0] == '\0')
-			continue;
-
-		char *tmp = realpath(candidates[i], NULL);
-		if (tmp != NULL) {
-			struct stat st;
-			if (stat(tmp, &st) == 0 && S_ISDIR(st.st_mode) && access(tmp, W_OK | X_OK) == 0) {
-				temp_directory = talloc_strdup(talloc_autofree_context(), tmp);
-				if (temp_directory == NULL)
-					temp_directory = tmp;
-				else
-					free(tmp);
-				return temp_directory;
-			}
-			free(tmp);
-		}
+	cand = getenv("PROOT_TMP_DIR");
+	if (cand && cand[0] != '\0') {
+		temp_directory = cand;
+		return temp_directory;
 	}
 
-	/* Last resort: use first valid candidate even if it doesn't exist yet */
-	for (i = 0; candidates[i] != NULL; i++) {
-		if (candidates[i][0] != '\0') {
-			temp_directory = candidates[i];
+#ifdef __ANDROID__
+	cand = getenv("PREFIX");
+	if (cand && cand[0] != '\0') {
+		char *prefix_tmp = talloc_asprintf(talloc_autofree_context(), "%s/tmp", cand);
+		if (prefix_tmp) {
+			temp_directory = prefix_tmp;
 			return temp_directory;
 		}
+	}
+	temp_directory = "/data/data/com.termux/files/usr/tmp";
+	return temp_directory;
+#endif
+
+	cand = getenv("TMPDIR");
+	if (cand && cand[0] != '\0') {
+		temp_directory = cand;
+		return temp_directory;
 	}
 
 	temp_directory = P_tmpdir;
