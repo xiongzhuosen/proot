@@ -6,6 +6,10 @@
 #include "path/path.h"
 #include "extension/extension.h"
 
+#ifndef __GLIBC__
+#include <linux/stat.h>
+#endif
+
 /*
  * This structure is passed to extensions
  * for STATX_SYSCALL event

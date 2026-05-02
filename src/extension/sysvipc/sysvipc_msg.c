@@ -12,6 +12,14 @@
 #include <time.h> /* time */
 #include <assert.h> /* assert */
 
+/* musl doesn't define these Linux-specific flags */
+#ifndef MSG_COPY
+#define MSG_COPY 040000
+#endif
+#ifndef MSG_EXCEPT
+#define MSG_EXCEPT 020000
+#endif
+
 #define SYSVIPC_MAX_MSG_SIZE 0xFFFF
 
 int sysvipc_msgget(Tracee *tracee, struct SysVIpcConfig *config)

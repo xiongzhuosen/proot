@@ -13,6 +13,17 @@
 
 #include <unistd.h>
 #include <assert.h> /* assert */
+
+/* musl doesn't define TEMP_FAILURE_RETRY */
+#ifndef TEMP_FAILURE_RETRY
+#define TEMP_FAILURE_RETRY(expression) \
+  (__extension__ ({ \
+    long int __result; \
+    do __result = (long int) (expression); \
+    while (__result == -1L && errno == EINTR); \
+    __result; \
+  }))
+#endif
 #include <sys/errno.h> /* E* */
 #include <sys/stat.h> /* S_IR */
 #include <sys/mman.h> /* MAP_SHARED */
