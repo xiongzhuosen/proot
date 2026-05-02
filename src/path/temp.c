@@ -18,28 +18,41 @@ const char *get_temp_directory()
 {
 	static const char *temp_directory = NULL;
 	char *tmp;
+	const char *candidates[] = {
+		NULL,  /* filled from PROOT_TMP_DIR */
+		P_tmpdir,
+#ifdef __ANDROID__
+		"/data/local/tmp",
+#endif
+		"/tmp",
+		"/var/tmp",
+		NULL
+	};
+	int i;
 
 	if (temp_directory != NULL)
 		return temp_directory;
 
-	temp_directory = getenv("PROOT_TMP_DIR");
-	if (temp_directory == NULL) {
-		temp_directory = P_tmpdir;
+	candidates[0] = getenv("PROOT_TMP_DIR");
+
+	for (i = 0; candidates[i] != NULL; i++) {
+		tmp = realpath(candidates[i], NULL);
+		if (tmp != NULL) {
+			struct stat st;
+			if (stat(tmp, &st) == 0 && S_ISDIR(st.st_mode)) {
+				temp_directory = talloc_strdup(talloc_autofree_context(), tmp);
+				if (temp_directory == NULL)
+					temp_directory = tmp;
+				else
+					free(tmp);
+				return temp_directory;
+			}
+			free(tmp);
+		}
 	}
 
-	tmp = realpath(temp_directory, NULL);
-	if (tmp == NULL) {
-		note(NULL, WARNING, SYSTEM,
-			"can't canonicalize %s", temp_directory);
-		return temp_directory;
-	}
-
-	temp_directory = talloc_strdup(talloc_autofree_context(), tmp);
-	if (temp_directory == NULL)
-		temp_directory = tmp;
-	else
-		free(tmp);
-
+	/* Last resort: use first candidate even if it doesn't exist */
+	temp_directory = candidates[0] ? candidates[0] : P_tmpdir;
 	return temp_directory;
 }
 

@@ -94,6 +94,9 @@ endef
 ifeq ($(origin HAS_LOADER_32BIT),undefined)
 $(eval $(call define_from_arch.h,,HAS_LOADER_32BIT))
 endif
+ifeq ($(HAS_LOADER_32BIT),0)
+override HAS_LOADER_32BIT =
+endif
 $(eval $(call define_from_arch.h,,HAS_POKEDATA_WORKAROUND))
 
 ifdef PROOT_UNBUNDLE_LOADER
@@ -234,8 +237,10 @@ endef
 
 $(eval $(build_loader))
 
+ifneq ($(HAS_LOADER_32BIT),0)
 ifdef HAS_LOADER_32BIT
 $(eval $(call build_loader,-m32))
+endif
 endif
 
 loader/loader-info.c: loader/loader
