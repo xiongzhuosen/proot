@@ -100,15 +100,17 @@ static int parse_perm_line(const char *line, PermRule *rule)
 
 	set_path:
 		/* check for /** suffix => prefix match */
-		size_t blen = strlen(buf);
-		if (blen >= 3 && strcmp(buf + blen - 3, "/**") == 0) {
-			buf[blen - 3] = '\0';
-			rule->match_type = MATCH_PREFIX;
-		} else {
-			rule->match_type = MATCH_EXACT;
+		{
+			size_t blen = strlen(buf);
+			if (blen >= 3 && strcmp(buf + blen - 3, "/**") == 0) {
+				buf[blen - 3] = '\0';
+				rule->match_type = MATCH_PREFIX;
+			} else {
+				rule->match_type = MATCH_EXACT;
+			}
+			strncpy(rule->path, buf, MAX_PATH_LEN - 1);
+			rule->path[MAX_PATH_LEN - 1] = '\0';
 		}
-		strncpy(rule->path, buf, MAX_PATH_LEN - 1);
-		rule->path[MAX_PATH_LEN - 1] = '\0';
 	}
 
 	if (rule->path[0] == '\0')

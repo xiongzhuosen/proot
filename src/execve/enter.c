@@ -49,6 +49,65 @@
 #define P(a) PROGRAM_FIELD(load_info->elf_header, *program_header, a)
 
 /**
+ * Inject LC_ALL=C into the tracee's environment to bypass slow glibc
+ * locale initialization inside chroots that lack locale data.
+ * This fixes the startup delay issue described in BUILD.md Q5.
+ * Only injects if neither LC_ALL nor LANG is already set.
+ * Returns -errno on error, 0 otherwise.
+ */
+static int inject_c_locale(Tracee *tracee)
+{
+	ArrayOfXPointers *envp;
+	int status;
+	int lc_all_idx;
+	int lang_idx;
+	size_t i;
+
+	/* Fetch envp from SYSARG_3 */
+	status = fetch_array_of_xpointers(tracee, &envp, SYSARG_3, 0);
+	if (status < 0)
+		return status;
+
+	envp->compare_xpointee = (compare_xpointee_t) compare_xpointee_env;
+
+	/* Check if LC_ALL or LANG is already set */
+	lc_all_idx = -1;
+	lang_idx = -1;
+	for (i = 0; i < envp->length; i++) {
+		char *env;
+		status = read_xpointee_as_string(envp, i, &env);
+		if (status < 0)
+			return status;
+		if (env == NULL)
+			break;
+		if (is_env_name(env, "LC_ALL"))
+			lc_all_idx = (int)i;
+		else if (is_env_name(env, "LANG"))
+			lang_idx = (int)i;
+	}
+
+	/* Only inject if neither LC_ALL nor LANG is set */
+	if (lc_all_idx >= 0 || lang_idx >= 0)
+		return 0;
+
+	/* Append LC_ALL=C at the end of envp */
+	status = resize_array_of_xpointers(envp, envp->length > 0 ? envp->length - 1 : 0, 1);
+	if (status < 0)
+		return status;
+
+	status = write_xpointee(envp, envp->length - 1, "LC_ALL=C");
+	if (status < 0)
+		return status;
+
+	/* Push modified envp back to tracee's memory */
+	status = push_array_of_xpointers(envp, SYSARG_3);
+	if (status < 0)
+		return status;
+
+	return 0;
+}
+
+/**
  * Add @program_header (type PT_LOAD) to @load_info->mappings.  This
  * function returns -errno if an error occured, otherwise it returns
  * 0.
@@ -653,6 +712,11 @@ int translate_execve_enter(Tracee *tracee)
 		status = expand_runner(tracee, host_path, user_path);
 		if (status < 0)
 			return status;
+
+		/* Inject LC_ALL=C to bypass slow locale initialization in chroot. */
+		status = inject_c_locale(tracee);
+		if (status < 0)
+			note(tracee, WARNING, INTERNAL, "failed to inject LC_ALL=C: %s", strerror(-status));
 	}
 
 	talloc_unlink(tracee, tracee->load_info);
@@ -666,6 +730,14 @@ int translate_execve_enter(Tracee *tracee)
 			return status;
 
 		return 0;
+	}
+
+	/* Inject LC_ALL=C to bypass slow locale initialization in chroot
+	 * for non-QEMU case (QEMU case handled above after expand_runner). */
+	if (tracee->qemu == NULL) {
+		status = inject_c_locale(tracee);
+		if (status < 0)
+			note(tracee, WARNING, INTERNAL, "failed to inject LC_ALL=C: %s", strerror(-status));
 	}
 
 	tracee->load_info = talloc_zero(tracee, LoadInfo);
