@@ -52,7 +52,8 @@
  * Inject LC_ALL=C into the tracee's environment to bypass slow glibc
  * locale initialization inside chroots that lack locale data.
  * This fixes the startup delay issue described in BUILD.md Q5.
- * Only injects if neither LC_ALL nor LANG is already set.
+ * LC_ALL has highest priority and overrides LANG/LC_*, so we only
+ * skip injection if LC_ALL is already explicitly set.
  * Returns -errno on error, 0 otherwise.
  */
 static int inject_c_locale(Tracee *tracee)
@@ -60,7 +61,6 @@ static int inject_c_locale(Tracee *tracee)
 	ArrayOfXPointers *envp;
 	int status;
 	int lc_all_idx;
-	int lang_idx;
 	size_t i;
 
 	/* Fetch envp from SYSARG_3 */
@@ -70,9 +70,8 @@ static int inject_c_locale(Tracee *tracee)
 
 	envp->compare_xpointee = (compare_xpointee_t) compare_xpointee_env;
 
-	/* Check if LC_ALL or LANG is already set */
+	/* Check if LC_ALL is already set */
 	lc_all_idx = -1;
-	lang_idx = -1;
 	for (i = 0; i < envp->length; i++) {
 		char *env;
 		status = read_xpointee_as_string(envp, i, &env);
@@ -80,14 +79,14 @@ static int inject_c_locale(Tracee *tracee)
 			return status;
 		if (env == NULL)
 			break;
-		if (is_env_name(env, "LC_ALL"))
+		if (is_env_name(env, "LC_ALL")) {
 			lc_all_idx = (int)i;
-		else if (is_env_name(env, "LANG"))
-			lang_idx = (int)i;
+			break;
+		}
 	}
 
-	/* Only inject if neither LC_ALL nor LANG is set */
-	if (lc_all_idx >= 0 || lang_idx >= 0)
+	/* Skip injection only if LC_ALL is already set */
+	if (lc_all_idx >= 0)
 		return 0;
 
 	/* Append LC_ALL=C at the end of envp */
