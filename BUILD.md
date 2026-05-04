@@ -655,14 +655,11 @@ $CC --version
 # 输出应包含 "musl"
 ```
 
-### Q5: 启动延迟 5 秒
+### Q5: 启动延迟 20 秒+
 
-**原因**: Kali chroot 环境中缺少 `en_US.UTF-8` locale 文件，glibc 会反复尝试加载（约 30+ 次）。
+**原因**: Kali chroot 环境中缺少 `en_US.UTF-8` locale 文件，glibc 会反复尝试加载（300+ 次 ENOENT 错误）。即使设置了 `LANG=en_US.UTF-8`，如果没有 `LC_ALL`，glibc 仍会查找 locale 文件。
 
-**解决**: 在 chroot 环境中生成 locale：
-```bash
-proot -r /path/to/kali locale-gen en_US.UTF-8
-```
+**解决**: proot 已内置自动修复：在 execve 阶段自动注入 `LC_ALL=C` 环境变量（仅当 LC_ALL 未设置时），跳过 glibc locale 初始化。无需手动生成 locale。
 
 ### Q6: "can't create temporary directory" 错误
 
